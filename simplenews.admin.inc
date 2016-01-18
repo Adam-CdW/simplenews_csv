@@ -704,6 +704,12 @@ function simplenews_admin_category_delete_submit($form, &$form_state) {
 function simplenews_subscription_list_add($form, &$form_state) {
   global $language;
 
+  $form['emails_csv'] = array(
+	'#weight' => -10,
+    '#type' => 'file',
+    '#title' => t('Email addresses from .csv file'),
+    '#description' => t('Upload a file, allowed extensions: csv. Email addresses must be separated by comma, space or newline.'),
+  );
   $form['emails'] = array(
     '#type' => 'textarea',
     '#title' => t('Email addresses'),
@@ -765,6 +771,23 @@ function simplenews_subscription_list_add($form, &$form_state) {
   return $form;
 }
 
+function simplenews_subscription_list_add_validate($form, &$form_state) {
+	$file = file_save_upload('emails_csv', array(
+      'file_validate_extensions' => array('csv'),
+  ));
+  if ($file){
+    if ($file = file_move($file, 'public://')) {
+      $form_state['values']['file'] = $file;
+    }
+    else {
+      form_set_error('file', t('Failed to write the uploaded file the site\'s file folder.'));
+    }
+  }
+  else {
+    form_set_error('file', t('No file was uploaded.'));
+  }
+}
+
 /**
  * @todo
  */
@@ -775,7 +798,26 @@ function simplenews_subscription_list_add_submit($form, &$form_state) {
   $checked_categories = array_keys(array_filter($form_state['values']['newsletters']));
   $langcode = $form_state['values']['language'];
 
-  $emails = preg_split("/[\s,]+/", $form_state['values']['emails']);
+  $file = $form_state['values']['file'];
+  unset($form_state['values']['file']);
+  $file->status = FILE_STATUS_PERMANENT;
+  file_save($file);
+  drupal_set_message(t('The form has been submitted and the file has been saved, filename: @filename.', array('@filename' => $file->filename)));
+  
+  $file->filepath = drupal_realpath($file->uri);
+  $data = file_get_contents($file->filepath);
+
+  $emails = '';
+  if((!empty($data) && isset($data)) && !empty($form_state['values']['emails'])){
+	$emails_csv = preg_split("/[\s,]+/", $data);
+	$emails_text = preg_split("/[\s,]+/", $form_state['values']['emails']);
+	$emails = array_merge($emails_csv, $emails_text);
+  }
+  elseif(!empty($data) && isset($data))
+	$emails = preg_split("/[\s,]+/", $data);
+  else
+    $emails = preg_split("/[\s,]+/", $form_state['values']['emails']);
+  //$emails = preg_split("/[\s,]+/", $form_state['values']['emails']);
   foreach ($emails as $email) {
     $email = trim($email);
     if ($email == '') {
